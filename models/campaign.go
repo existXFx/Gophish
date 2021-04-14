@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"time"
 
@@ -69,6 +70,12 @@ type CampaignStats struct {
 	SubmittedData int64 `json:"submitted_data"`
 	EmailReported int64 `json:"email_reported"`
 	Error         int64 `json:"error"`
+}
+
+type MatterMostWebHookMsg struct {
+	Text string `json:"text"`
+	//Channel  string `json:"channel"`
+	Username string `json:"username"`
 }
 
 // Event contains the fields for an event
@@ -168,7 +175,44 @@ func AddEvent(e *Event, campaignID int64) error {
 				Secret: wh.Secret,
 			})
 		}
-		webhook.SendAll(whEndPoints, e)
+
+		/* Patch */
+
+		if e.Message == EventOpened ||
+			e.Message == EventClicked ||
+			e.Message == EventDataSubmit {
+
+			var msg MatterMostWebHookMsg
+			//var details EventDetails
+			msg.Username = "GophishBot"
+			msg.Text = "#### %s\n##### 目标信息\n%s\n##### 详细信息\n```\n%s\n```\n@all"
+			//err := json.Unmarshal([]byte(e.Details), &details)
+
+			ts := Target{}
+			gt := GroupTarget{}
+			group := Group{}
+			err := db.Table("targets").Select("targets.id, targets.email, targets.first_name, targets.last_name, targets.position").Where("targets.email=?", e.Email).Scan(&ts).Error
+			if err == nil {
+				tempUserInfo := "| 姓名 | 邮箱 | 职位 | 所属目标组 |\n| :------: | :-----:  | :----: | :----: |\n| %s | %s | %s | %s |\n"
+				err = db.Table("group_targets").Where("target_id=?", ts.Id).Scan(&gt).Error
+				if err == nil {
+					err = db.Table("groups").Where("id=?", gt.GroupId).Scan(&group).Error
+					if err == nil {
+						userInfo := fmt.Sprintf(tempUserInfo, ts.BaseRecipient.FirstName+ts.BaseRecipient.LastName,
+							ts.BaseRecipient.Email,
+							ts.BaseRecipient.Position,
+							group.Name)
+
+						msg.Text = fmt.Sprintf(msg.Text, e.Message, userInfo, e.Details)
+						webhook.SendAll(whEndPoints, msg)
+					}
+				}
+
+			}
+
+		}
+
+		//webhook.SendAll(whEndPoints, e)
 	} else {
 		log.Errorf("error getting active webhooks: %v", err)
 	}

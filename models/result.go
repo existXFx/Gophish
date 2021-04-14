@@ -41,7 +41,7 @@ type Result struct {
 func (r *Result) createEvent(status string, details interface{}) (*Event, error) {
 	e := &Event{Email: r.Email, Message: status}
 	if details != nil {
-		dj, err := json.Marshal(details)
+		dj, err := json.MarshalIndent(details, "", "  ")
 		if err != nil {
 			return nil, err
 		}
